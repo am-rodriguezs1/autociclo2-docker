@@ -6,7 +6,7 @@ on:
       ghost_version_v5:
         description: 'Ghost version (v5.x.x)'
         required: true
-        default: '5.114.1' # O la última versión que quieras probar
+        default: '5.114.1'
       ghost_version_v4:
         description: 'Ghost version (v4.x.x)'
         required: true
@@ -15,7 +15,7 @@ on:
 jobs:
   test-ghost-v5:
     name: Test Ghost v5.x
-    runs-on: ubuntu-latest # Puede ser ubuntu-22.04 o ubuntu-latest
+    runs-on: ubuntu-latest
 
     env:
       PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
@@ -77,7 +77,6 @@ jobs:
           exit 1
       
       - name: Install Kraken dependencies (for Ghost v5 tests)
-        # Asume que e2e/misw-4103-kraken/package.json es compatible con Node 20.x
         run: npm ci --prefix ./e2e/misw-4103-kraken
 
       - name: Run Kraken tests against Ghost v5.x (using test:all)
@@ -95,7 +94,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kraken-screenshots-ghost-v5
-          path: ${{ github.workspace }}/e2e/misw-4103-kraken/screenshots/ # Sube toda la carpeta de screenshots
+          path: ${{ github.workspace }}/e2e/misw-4103-kraken/screenshots/
 
       - name: Teardown Ghost v5.x
         if: always()
@@ -105,7 +104,7 @@ jobs:
 
   test-ghost-v4:
     name: Test Ghost v4.x
-    runs-on: ubuntu-22.04 # Usamos 22.04 como en tu YAML funcional para v4
+    runs-on: ubuntu-22.04
 
     env:
       PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
@@ -166,10 +165,21 @@ jobs:
           ghost log -e production
           exit 1
       
-      - name: Install Kraken dependencies (for Ghost v4 tests)
-        run: npm install --prefix ./e2e/misw-4103-kraken
-        # Considera si necesitas el `npm install kraken-node` explícito aquí como en tu último YAML funcional para v4
-        # Si `kraken-node` está en e2e/misw-4103-kraken/package.json, el comando anterior debería ser suficiente.
+      # MODIFICACIÓN AQUÍ para hacer más robusta la instalación de dependencias de Kraken para v4
+      - name: Install Kraken dependencies in sub-directory (for Ghost v4 tests)
+        run: |
+          echo "Instalando dependencias de Kraken en ./e2e/misw-4103-kraken con Node.js $(node -v) y npm $(npm -v)..."
+          npm install --prefix ./e2e/misw-4103-kraken
+          echo "Instalando explícitamente @cucumber/cucumber@7.2.1 en el subdirectorio de Kraken..."
+          npm install --prefix ./e2e/misw-4103-kraken @cucumber/cucumber@7.2.1
+      
+      - name: Explicitly install/update kraken-node in sub-directory (for Ghost v4 tests)
+        working-directory: ./e2e/misw-4103-kraken
+        run: |
+          echo "Ejecutando 'npm install kraken-node' en $(pwd)..."
+          npm install kraken-node
+
+      # Fin de la MODIFICACIÓN
 
       - name: Run Kraken tests against Ghost v4.x (using test:base)
         working-directory: ./e2e/misw-4103-kraken
@@ -196,7 +206,7 @@ jobs:
 
   compare-screenshots:
     name: Compare Screenshots with Pixelmatch
-    needs: [test-ghost-v5, test-ghost-v4] # Se ejecuta después de que ambos jobs de prueba terminen
+    needs: [test-ghost-v5, test-ghost-v4]
     runs-on: ubuntu-latest
 
     steps:
@@ -206,19 +216,19 @@ jobs:
       - name: Set up Node.js (for pixelmatch script)
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x' # O la versión que prefieras para el script de comparación
+          node-version: '20.x'
 
       - name: Download Ghost v5 screenshots
         uses: actions/download-artifact@v4
         with:
           name: kraken-screenshots-ghost-v5
-          path: ./screenshots-v5 # Descarga en una carpeta específica
+          path: ./screenshots-v5
 
       - name: Download Ghost v4 screenshots
         uses: actions/download-artifact@v4
         with:
           name: kraken-screenshots-ghost-v4
-          path: ./screenshots-v4 # Descarga en otra carpeta específica
+          path: ./screenshots-v4
 
       - name: Install Pixelmatch dependencies
         run: npm install pixelmatch pngjs
@@ -227,10 +237,7 @@ jobs:
         run: mkdir -p ./pixelmatch-diffs
 
       - name: Run Pixelmatch comparison script
-        # Este script asume que tienes un archivo compare.js en la raíz de tu repo.
-        # Puedes crearlo con el contenido que te proporcionaré a continuación.
         run: node ./compare_screenshots.js ${{ github.event.inputs.ghost_version_v5 }} ${{ github.event.inputs.ghost_version_v4 }}
-        # Pasamos las versiones como argumentos al script para que pueda encontrar las carpetas correctas
 
       - name: Upload Pixelmatch diffs and report
         if: always()
@@ -240,10 +247,8 @@ jobs:
           path: |
             ./pixelmatch-diffs/
             ./pixelmatch-report.txt 
-            # Asegúrate que tu script de comparación genere un pixelmatch-report.txt
 
       - name: Check for differences (Fail job if diffs exist)
-        # Este es un ejemplo simple. Podrías hacer esto más sofisticado en tu script.
         run: |
           if [ -n "$(ls -A ./pixelmatch-diffs)" ]; then
             echo "::error::Pixel differences found between Ghost v5 and Ghost v4 screenshots."
