@@ -1,9 +1,10 @@
-// vrt/misw-4103-pixelmatch/vrt.config.js
+// ./vrt/misw-4103-pixelmatch/vrt.config.js
 const path = require('path');
 
 // --- Variables de Entorno (el workflow de GitHub Actions las establecerá) ---
-const ghostVersionV5 = process.env.GHOST_VERSION_V5_FOR_VRT || '5.114.1';
-const ghostVersionV4 = process.env.GHOST_VERSION_V4_FOR_VRT || '4.5.0';
+// Se espera que estas variables NO tengan el prefijo 'v'
+const ghostVersionV5_raw = process.env.GHOST_VERSION_V5_FOR_VRT || '5.114.1';
+const ghostVersionV4_raw = process.env.GHOST_VERSION_V4_FOR_VRT || '4.5.0';
 
 // Determinar si estamos en GitHub Actions
 const isGitHubActions = !!process.env.GITHUB_WORKSPACE;
@@ -15,34 +16,41 @@ let outputDir;
 
 if (isGitHubActions) {
     console.log("[VRT Config] Detectado entorno de GitHub Actions.");
-    // En GitHub Actions, los artefactos se descargan en la raíz del workspace,
-    // y dentro de esas carpetas de descarga (ej: ./screenshots-v4)
-    // ya está la carpeta de versión (ej: v4.5.0).
-    baseScreenshotsPath = path.resolve(process.cwd(), `./screenshots-v4/v${ghostVersionV4}`);
-    rcScreenshotsPath = path.resolve(process.cwd(), `./screenshots-v5/v${ghostVersionV5}`);
-    outputDir = path.resolve(process.cwd(), "./VRTReportPixelmatch"); // Directorio de salida para reportes en Actions
+    const workspaceDir = process.env.GITHUB_WORKSPACE; // Usar GITHUB_WORKSPACE directamente
+
+    // En GitHub Actions, los artefactos se descargan en carpetas (ej: ./screenshots-v4)
+    // y DENTRO de ellas, se espera que Kraken haya creado una carpeta de versión con el prefijo 'v'.
+    // Ejemplo: ./screenshots-v4/v4.5.0/
+    baseScreenshotsPath = path.join(workspaceDir, 'screenshots-v4', `v${ghostVersionV4_raw}`);
+    rcScreenshotsPath = path.join(workspaceDir, 'screenshots-v5', `v${ghostVersionV5_raw}`);
+    outputDir = path.join(workspaceDir, "VRTReportPixelmatch");
+
+    console.log(`[VRT Config - GHA] CWD: ${process.cwd()}`);
+    console.log(`[VRT Config - GHA] Workspace: ${workspaceDir}`);
+
 } else {
     console.log("[VRT Config] Detectado entorno Local.");
     // Rutas para ejecución LOCAL
     // Asume que este archivo (vrt.config.js) está en 'vrt/misw-4103-pixelmatch/'
-    baseScreenshotsPath = path.resolve(__dirname, `../../e2e/misw-4103-kraken/screenshots/v${ghostVersionV4}`);
-    rcScreenshotsPath = path.resolve(__dirname, `../../e2e/misw-4103-kraken/screenshots/v${ghostVersionV5}`);
+    // y que Kraken crea las carpetas de versión con el prefijo 'v' localmente también.
+    baseScreenshotsPath = path.resolve(__dirname, `../../e2e/misw-4103-kraken/screenshots/v${ghostVersionV4_raw}`);
+    rcScreenshotsPath = path.resolve(__dirname, `../../e2e/misw-4103-kraken/screenshots/v${ghostVersionV5_raw}`);
     outputDir = path.resolve(__dirname, "./results"); // Tu configuración local para output
 }
 
-console.log(`[VRT Config] Base (Old - Ghost v4 - ${ghostVersionV4}) Screenshots Path: ${baseScreenshotsPath}`);
-console.log(`[VRT Config] RC (New - Ghost v5 - ${ghostVersionV5}) Screenshots Path: ${rcScreenshotsPath}`);
+console.log(`[VRT Config] Base (Old - Ghost v4 - ${ghostVersionV4_raw}) Screenshots Path: ${baseScreenshotsPath}`);
+console.log(`[VRT Config] RC (New - Ghost v5 - ${ghostVersionV5_raw}) Screenshots Path: ${rcScreenshotsPath}`);
 console.log(`[VRT Config] Output Directory: ${outputDir}`);
 
 module.exports = {
     pixelOptions: {
         threshold: 0.1,
-        includeAA: true,
-        alpha: 0.5,
-        aaColor: [0, 255, 0],
-        diffColor: [255, 0, 0]
+        includeAA: true, // Booleano
+        alpha: 0.5,      // Número
+        aaColor: [0, 255, 0], // Array de números
+        diffColor: [255, 0, 0] // Array de números
     },
     baseScreenshotsPath,
     rcScreenshotsPath,
-    output: outputDir
+    output: outputDir // Asegúrate de que 'outputDir' se exporte como 'output'
 };
