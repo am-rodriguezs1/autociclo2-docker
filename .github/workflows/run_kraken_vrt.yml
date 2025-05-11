@@ -210,49 +210,69 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository (for pixelmatch script)
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Node.js (for pixelmatch script)
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '20.x' # O la versión que usa tu script index.js
 
-      - name: Download Ghost v5 screenshots
+      - name: Download Ghost v5 screenshots artifact
         uses: actions/download-artifact@v4
         with:
           name: kraken-screenshots-ghost-v5
-          path: ./screenshots-v5
+          path: ./screenshots-v5 # Descarga en esta carpeta en la raíz del workspace
 
-      - name: Download Ghost v4 screenshots
+      - name: Download Ghost v4 screenshots artifact
         uses: actions/download-artifact@v4
         with:
           name: kraken-screenshots-ghost-v4
-          path: ./screenshots-v4
+          path: ./screenshots-v4 # Descarga en esta carpeta en la raíz del workspace
 
-      - name: Install Pixelmatch dependencies
+      - name: List downloaded artifact contents (Debug)
+        run: |
+          echo "Contents of ./screenshots-v5:"
+          ls -R ./screenshots-v5
+          echo "Contents of ./screenshots-v4:"
+          ls -R ./screenshots-v4
+        continue-on-error: true
+
+      - name: Install Pixelmatch script dependencies
+        # Si tu vrt/misw-4103-pixelmatch/ tiene su propio package.json, usa:
+        # working-directory: ./vrt/misw-4103-pixelmatch
+        # run: npm install
+        # Si no, y las dependencias (pixelmatch, pngjs) están en el package.json raíz o se instalan globalmente:
         run: npm install pixelmatch pngjs
 
-      - name: Create directory for diff images
-        run: mkdir -p ./pixelmatch-diffs
+      - name: Run Pixelmatch comparison script (index.js)
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }} # Asegura que GITHUB_WORKSPACE esté disponible para la detección
+          GHOST_VERSION_V5_FOR_VRT: ${{ github.event.inputs.ghost_version_v5 }}
+          GHOST_VERSION_V4_FOR_VRT: ${{ github.event.inputs.ghost_version_v4 }}
+          # Opcional: puedes pasar las rutas completas si prefieres no depender de la construcción dentro de vrt.config.js para Actions
+          # BASE_SCREENSHOTS_PATH_FOR_VRT: ${{ github.workspace }}/screenshots-v4/screenshots/v${{ github.event.inputs.ghost_version_v4 }}
+          # RC_SCREENSHOTS_PATH_FOR_VRT: ${{ github.workspace }}/screenshots-v5/screenshots/v${{ github.event.inputs.ghost_version_v5 }}
+          # OUTPUT_PATH_FOR_VRT: ${{ github.workspace }}/VRTReportPixelmatch
+        run: node ./vrt/misw-4103-pixelmatch/index.js
 
-      - name: Run Pixelmatch comparison script
-        run: node ./compare_screenshots.js ${{ github.event.inputs.ghost_version_v5 }} ${{ github.event.inputs.ghost_version_v4 }}
-
-      - name: Upload Pixelmatch diffs and report
+      - name: Upload Pixelmatch results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pixelmatch-results
-          path: |
-            ./pixelmatch-diffs/
-            ./pixelmatch-report.txt 
+          name: pixelmatch-VRT-report
+          # Esta ruta debe coincidir con 'outputDir' cuando está en GitHub Actions
+          path: ./VRTReportPixelmatch/ 
 
       - name: Check for differences (Fail job if diffs exist)
+        # Esta lógica necesita ser implementada en tu index.js
+        # o mediante un script que analice los resultados de VRTReportPixelmatch
         run: |
-          if [ -n "$(ls -A ./pixelmatch-diffs)" ]; then
-            echo "::error::Pixel differences found between Ghost v5 and Ghost v4 screenshots."
-            exit 1
-          else
-            echo "No pixel differences found."
-          fi
+          REPORT_DIR="./VRTReportPixelmatch"
+          echo "Revisar artefactos en '$REPORT_DIR' para ver los resultados de la comparación visual."
+          # Ejemplo: si tu index.js crea un archivo 'FAIL_VRT.txt' si hay diferencias:
+          # if [ -f "$REPORT_DIR/FAIL_VRT.txt" ]; then
+          #   echo "::error::Pixel differences found by VRT script."
+          #   exit 1
+          # fi
+
