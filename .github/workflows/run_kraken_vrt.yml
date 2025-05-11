@@ -1,0 +1,253 @@
+name: Ghost v5 vs v4 Visual Regression with Pixelmatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      ghost_version_v5:
+        description: 'Ghost version (v5.x.x)'
+        required: true
+        default: '5.114.1' # O la última versión que quieras probar
+      ghost_version_v4:
+        description: 'Ghost version (v4.x.x)'
+        required: true
+        default: '4.5.0'
+
+jobs:
+  test-ghost-v5:
+    name: Test Ghost v5.x
+    runs-on: ubuntu-latest # Puede ser ubuntu-22.04 o ubuntu-latest
+
+    env:
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
+      PUPPETEER_LAUNCH_ARGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --remote-debugging-port=9222"
+      NODE_ENV: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install system dependencies (for Ghost v5 runner)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            google-chrome-stable xvfb curl wget gnupg unzip sudo \
+            libnss3 libatk-bridge2.0-0 libxss1 libgbm1 libasound2t64 \
+            libxcomposite1 libxdamage1 libxrandr2 libgtk-3-0 libdrm2 \
+            ca-certificates apt-transport-https android-tools-adb
+          echo "Chrome version: $(google-chrome-stable --version)"
+          echo "Node version: $(node -v)"
+          echo "NPM version: $(npm -v)"
+          echo "ADB version: $(adb version || echo 'adb not found after install attempt')"
+
+      - name: Install latest Ghost CLI
+        run: sudo npm install -g ghost-cli && ghost --version
+
+      - name: Create Ghost working dir (v5)
+        run: mkdir -p ${{ github.workspace }}/ghost-instance-v5
+
+      - name: Set up Ghost v5.x instance
+        working-directory: ${{ github.workspace }}/ghost-instance-v5
+        run: |
+          echo "Instalando Ghost versión: ${{ github.event.inputs.ghost_version_v5 }}"
+          ghost install ${{ github.event.inputs.ghost_version_v5 }} \
+            --no-prompt --no-start --local --db sqlite3 \
+            --no-setup-linux-user --process local
+          echo "Iniciando Ghost (v5)..."
+          ghost start --no-enable-stackdriver
+
+      - name: Wait for Ghost v5.x to be ready
+        working-directory: ${{ github.workspace }}/ghost-instance-v5
+        run: |
+          echo "Esperando que Ghost (v5) esté listo..."
+          for i in {1..30}; do
+            if curl -s --fail http://localhost:2368/ghost/ > /dev/null; then
+              echo "Ghost (v5) está listo!"
+              exit 0
+            fi
+            echo "Intento $i: Ghost (v5) no está listo aún..."
+            sleep 5
+          done
+          echo "Error: Ghost (v5) no inició a tiempo."
+          ghost log -e production
+          exit 1
+      
+      - name: Install Kraken dependencies (for Ghost v5 tests)
+        # Asume que e2e/misw-4103-kraken/package.json es compatible con Node 20.x
+        run: npm ci --prefix ./e2e/misw-4103-kraken
+
+      - name: Run Kraken tests against Ghost v5.x (using test:all)
+        working-directory: ./e2e/misw-4103-kraken
+        env:
+          GHOST_VERSION: ${{ github.event.inputs.ghost_version_v5 }}
+        run: |
+          echo "GHOST_VERSION para screenshots será: $GHOST_VERSION"
+          mkdir -p ./screenshots 
+          mkdir -p ./reports
+          xvfb-run -a --server-args="-screen 0 1280x1024x24" npm run test:all
+
+      - name: Upload Kraken screenshots (Ghost v5)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kraken-screenshots-ghost-v5
+          path: ${{ github.workspace }}/e2e/misw-4103-kraken/screenshots/ # Sube toda la carpeta de screenshots
+
+      - name: Teardown Ghost v5.x
+        if: always()
+        working-directory: ${{ github.workspace }}/ghost-instance-v5
+        run: |
+          (ghost stop) || echo "Ghost v5 stop failed or was not running."
+
+  test-ghost-v4:
+    name: Test Ghost v4.x
+    runs-on: ubuntu-22.04 # Usamos 22.04 como en tu YAML funcional para v4
+
+    env:
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
+      PUPPETEER_LAUNCH_ARGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --remote-debugging-port=9222"
+      NODE_ENV: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 14.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '14.x'
+
+      - name: Install system dependencies (for Ghost v4 runner)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            google-chrome-stable xvfb curl wget gnupg unzip sudo \
+            libnss3 libatk-bridge2.0-0 libxss1 libgbm1 libasound2 \
+            libxcomposite1 libxdamage1 libxrandr2 libgtk-3-0 libdrm2 \
+            ca-certificates apt-transport-https android-tools-adb
+          echo "Chrome version: $(google-chrome-stable --version)"
+          echo "Node version: $(node -v)"
+          echo "NPM version: $(npm -v)"
+          echo "ADB version: $(adb version || echo 'adb not found after install attempt')"
+
+      - name: Install compatible Ghost CLI for Ghost 4.x
+        run: sudo npm install -g ghost-cli@1.21.0 && ghost --version
+
+      - name: Create Ghost working dir (v4)
+        run: mkdir -p ${{ github.workspace }}/ghost-instance-v4
+
+      - name: Set up Ghost 4.x instance
+        working-directory: ${{ github.workspace }}/ghost-instance-v4
+        run: |
+          echo "Instalando Ghost versión: ${{ github.event.inputs.ghost_version_v4 }}"
+          ghost install ${{ github.event.inputs.ghost_version_v4 }} \
+            --force --no-prompt --no-start --local --db sqlite3 \
+            --no-setup-linux-user --dir ${{ github.workspace }}/ghost-instance-v4 --process local
+          echo "Iniciando Ghost (v4)..."
+          ghost start --no-enable-stackdriver
+
+      - name: Wait for Ghost 4.x to be ready
+        working-directory: ${{ github.workspace }}/ghost-instance-v4
+        run: |
+          echo "Esperando que Ghost (v4) esté listo..."
+          for i in {1..30}; do
+            if curl -s --fail http://localhost:2368/ghost/ > /dev/null; then
+              echo "Ghost (v4) está listo!"
+              exit 0
+            fi
+            echo "Intento $i: Ghost (v4) no está listo aún..."
+            sleep 5
+          done
+          echo "Error: Ghost (v4) no inició a tiempo."
+          ghost log -e production
+          exit 1
+      
+      - name: Install Kraken dependencies (for Ghost v4 tests)
+        run: npm install --prefix ./e2e/misw-4103-kraken
+        # Considera si necesitas el `npm install kraken-node` explícito aquí como en tu último YAML funcional para v4
+        # Si `kraken-node` está en e2e/misw-4103-kraken/package.json, el comando anterior debería ser suficiente.
+
+      - name: Run Kraken tests against Ghost v4.x (using test:base)
+        working-directory: ./e2e/misw-4103-kraken
+        env:
+          GHOST_VERSION: ${{ github.event.inputs.ghost_version_v4 }}
+        run: |
+          echo "GHOST_VERSION para screenshots será: $GHOST_VERSION"
+          mkdir -p ./screenshots 
+          mkdir -p ./reports
+          xvfb-run -a --server-args="-screen 0 1280x1024x24" npm run test:base
+
+      - name: Upload Kraken screenshots (Ghost v4)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kraken-screenshots-ghost-v4
+          path: ${{ github.workspace }}/e2e/misw-4103-kraken/screenshots/
+
+      - name: Teardown Ghost 4.x
+        if: always()
+        working-directory: ${{ github.workspace }}/ghost-instance-v4
+        run: |
+          (ghost stop) || echo "Ghost v4 stop failed or was not running."
+
+  compare-screenshots:
+    name: Compare Screenshots with Pixelmatch
+    needs: [test-ghost-v5, test-ghost-v4] # Se ejecuta después de que ambos jobs de prueba terminen
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository (for pixelmatch script)
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js (for pixelmatch script)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x' # O la versión que prefieras para el script de comparación
+
+      - name: Download Ghost v5 screenshots
+        uses: actions/download-artifact@v4
+        with:
+          name: kraken-screenshots-ghost-v5
+          path: ./screenshots-v5 # Descarga en una carpeta específica
+
+      - name: Download Ghost v4 screenshots
+        uses: actions/download-artifact@v4
+        with:
+          name: kraken-screenshots-ghost-v4
+          path: ./screenshots-v4 # Descarga en otra carpeta específica
+
+      - name: Install Pixelmatch dependencies
+        run: npm install pixelmatch pngjs
+
+      - name: Create directory for diff images
+        run: mkdir -p ./pixelmatch-diffs
+
+      - name: Run Pixelmatch comparison script
+        # Este script asume que tienes un archivo compare.js en la raíz de tu repo.
+        # Puedes crearlo con el contenido que te proporcionaré a continuación.
+        run: node ./compare_screenshots.js ${{ github.event.inputs.ghost_version_v5 }} ${{ github.event.inputs.ghost_version_v4 }}
+        # Pasamos las versiones como argumentos al script para que pueda encontrar las carpetas correctas
+
+      - name: Upload Pixelmatch diffs and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelmatch-results
+          path: |
+            ./pixelmatch-diffs/
+            ./pixelmatch-report.txt 
+            # Asegúrate que tu script de comparación genere un pixelmatch-report.txt
+
+      - name: Check for differences (Fail job if diffs exist)
+        # Este es un ejemplo simple. Podrías hacer esto más sofisticado en tu script.
+        run: |
+          if [ -n "$(ls -A ./pixelmatch-diffs)" ]; then
+            echo "::error::Pixel differences found between Ghost v5 and Ghost v4 screenshots."
+            exit 1
+          else
+            echo "No pixel differences found."
+          fi
