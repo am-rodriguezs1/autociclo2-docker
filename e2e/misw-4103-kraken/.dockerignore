@@ -1,0 +1,29 @@
+# Dependencias locales
+node_modules
+.npm
+
+# Archivos de log o temporales
+*.log
+*.tmp
+*.swp
+
+# Capturas y reportes que se generan durante la ejecución
+screenshots/
+reports/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos de configuración locales (VSCode, JetBrains, etc.)
+.vscode/
+.idea/
+
+# Archivos que usan herramientas de CI/CD y no deberían ir al build
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore

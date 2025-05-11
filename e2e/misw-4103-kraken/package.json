@@ -1,0 +1,28 @@
+{
+  "name": "proyecto-kraken-template",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "",
+  "description": "Repositorio base para el uso Pruebas Automatizadas utilizando Kraken",
+  "keywords": [
+    "kraken",
+    "misw"
+  ],
+  "directories": {
+    "test": "features"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "test": "npx kraken-node run",
+    "test:all": "node krakenRunner.js",
+    "test:base": "node krakenRunner.js escenarios_base"
+  },
+  "dependencies": {
+    "@cucumber/cucumber": "^7.2.1",
+    "@faker-js/faker": "^5.5.3",
+    "chai": "^5.2.0",
+    "kraken-node": "^1.0.24"
+  }
+}

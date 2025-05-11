@@ -1,0 +1,37 @@
+{
+  "name": "misw-4103-pixelmatch",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "Repositorio base para el uso de Pruebas de Regresión Visual utilizando Pixelmatch",
+  "keywords": [
+    "visual",
+    "regression",
+    "vrt",
+    "pixelmatch",
+    "image",
+    "comparison"
+  ],
+  "contributors": [
+    {
+      "name": "Rocio del Pilar Correa",
+      "email": "rd.correa97@uniandes.edu.co"
+    },
+    {
+      "name": "Santiago Cortés Fernández",
+      "email": "s.cortes@uniandes.edu.co"
+    }
+  ],
+  "main": "playwright.config.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "report": "node index.js"
+  },
+  "dependencies": {
+    "@types/node": "^22.14.1",
+    "misw-4103-pixelmatch": "file:",
+    "pixelmatch": "5.3.0",
+    "pngjs": "^7.0.0"
+  }
+}

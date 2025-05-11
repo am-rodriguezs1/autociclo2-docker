@@ -1,0 +1,89 @@
+name: Run Cypress Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Email for login'
+        required: true
+      password:
+        description: 'Password for login'
+        required: true
+      ghost_version:
+        description: 'Ghost version'
+        required: true
+        default: '5.114.1'
+
+jobs:
+  run-cypress:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.11.1'
+
+      - name: Install Ghost CLI
+        run: npm install -g ghost-cli
+
+      - name: Create Ghost working dir
+        run: mkdir ghost-site
+
+      - name: Set up Ghost instance
+        working-directory: ghost-site
+        run: |
+          ghost install ${{ github.event.inputs.ghost_version }} --no-prompt --no-start --local
+          ghost start
+
+      - name: Wait for Ghost to be ready
+        run: |
+          echo "Waiting for Ghost to be ready..."
+          for i in {1..30}; do
+            if curl -s http://localhost:2368/ghost/ > /dev/null; then
+              echo "Ghost is ready!"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Ghost did not start in time"
+          exit 1
+
+      - name: Install Node dependencies
+        run: npm ci --prefix ./e2e/misw-4103-cypress
+
+      - name: Run Cypress tests with custom runner
+        run: |
+          URL="http://localhost:2368" \
+          GHOST_URL="http://localhost:2368/ghost/#" \
+          GHOST_EMAIL="${{ github.event.inputs.email }}" \
+          GHOST_PASSWORD="${{ github.event.inputs.password }}" \
+          GHOST_VERSION="${{ github.event.inputs.ghost_version }}" \
+          node cypressRunner.js
+        working-directory: e2e/misw-4103-cypress
+
+      - name: Upload Cypress screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: e2e/misw-4103-cypress/cypress/screenshots/
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: e2e/misw-4103-cypress/cypress/results/
+
+      - name: Teardown Ghost
+        if: always()
+        run: |
+          if [ -d "ghost-site" ]; then
+            ghost stop --dir ghost-site || echo "Ghost was not running"
+            ghost uninstall --yes --dir ghost-site || echo "Ghost was not installed"
+            rm -rf ghost-site
+          else
+            echo "ghost-site directory not found, skipping teardown"
+          fi

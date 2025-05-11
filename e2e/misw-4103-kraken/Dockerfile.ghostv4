@@ -1,0 +1,98 @@
+# Usa una imagen base de Ubuntu 20.04
+FROM ubuntu:20.04
+
+# Argumento para la versión de Ghost
+ARG GHOST_VERSION_ARG=4.5.0
+# Argumento para la versión de Node.js a configurar (Node.js 14.x)
+ARG NODE_SETUP_SCRIPT=setup_14.x
+
+# Variables de entorno
+ENV GHOST_VERSION=${GHOST_VERSION_ARG}
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+ENV PUPPETEER_LAUNCH_ARGS="--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --remote-debugging-port=9222"
+ENV DEBIAN_FRONTEND=noninteractive
+ENV NODE_ENV=production
+
+# 1. Instalar paquetes del sistema necesarios
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    unzip \
+    sudo \
+    xvfb \
+    android-tools-adb \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libxss1 \
+    libgbm1 \
+    libasound2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgtk-3-0 \
+    libdrm2 \
+    libu2f-udev \
+    fonts-liberation \
+    libappindicator3-1 \
+    ca-certificates \
+    apt-transport-https \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Instalar Node.js v14.x (compatible con Ghost 4.x)
+RUN curl -fsSL https://deb.nodesource.com/${NODE_SETUP_SCRIPT} | sudo -E bash - && \
+    sudo apt-get install -y nodejs && \
+    echo "Node version: $(node -v)" && \
+    echo "NPM version: $(npm -v)"
+
+# 3. Instalar Google Chrome Stable
+RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
+    sudo dpkg -i google-chrome-stable_current_amd64.deb || sudo apt-get install -fy && \
+    rm google-chrome-stable_current_amd64.deb && \
+    echo "Chrome version: $(google-chrome-stable --version)"
+
+# 4. Crear un usuario no-root para Ghost
+RUN useradd --create-home --shell /bin/bash --uid 1000 ghostuser && \
+    usermod -aG sudo ghostuser && \
+    echo 'ghostuser ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+# 5. Crear directorio de la aplicación Kraken (/app) y copiar el contenido
+WORKDIR /app
+COPY . . 
+RUN chmod +x /app/entrypoint.sh
+
+# 6. Instalar Ghost CLI globalmente
+RUN npm install -g ghost-cli && ghost --version
+
+# 7. Crear directorio para la instalación de Ghost y darle permisos al ghostuser
+RUN mkdir -p /var/www/ghost && \
+    chown -R ghostuser:ghostuser /var/www/ghost
+
+# 8. Cambiar al usuario ghostuser para instalar Ghost
+USER ghostuser
+WORKDIR /var/www/ghost
+
+# Instalar Ghost como ghostuser, con la flag --force
+RUN ghost install ${GHOST_VERSION} \
+    --force \
+    --no-prompt \
+    --no-start \
+    --local \
+    --db sqlite3 \
+    --no-setup-linux-user \
+    --dir /var/www/ghost \
+    --process local
+
+# 9. Volver al usuario root para instalar dependencias de Kraken
+USER root
+WORKDIR /app
+# CAMBIO: Eliminar package-lock.json antes de npm install
+# Esto fuerza a npm (la versión de Node 14) a resolver dependencias desde package.json.
+#RUN rm -f package-lock.json && npm install
+RUN npm install
+RUN npm install @cucumber/cucumber@7.2.1
+RUN npm install kraken-node
+
+# Establecer el script de entrada para el contenedor
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD []

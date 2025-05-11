@@ -1,0 +1,41 @@
+{
+  "name": "misw-4103-monkey",
+  "version": "2.0.0",
+  "license": "MIT",
+  "description": "This repository contains the code for a random tester developed using [Cypress](https://www.cypress.io/)",
+  "keywords": [
+    "cypress",
+    "random",
+    "tester",
+    "monkey"
+  ],
+  "contributors": [
+    {
+      "name": "Juan Espitia",
+      "email": "j.espitia@uniandes.edu.co"
+    },
+    {
+      "name": "Camilo Andrés Escobar Velásquez",
+      "email": "ca.escobar2434@uniandes.edu.co"
+    },
+    {
+      "name": "Santiago Cortés Fernández",
+      "email": "s.cortes@uniandes.edu.co"
+    }
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "cypress.config.js",
+  "scripts": {
+    "test": "npx cypress run",
+    "test:ui": "npx cypress open"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^9.6.0",
+    "cypress": "^14.2.1",
+    "cypress-log-to-output": "^1.1.2",
+    "cypress-plugin-tab": "^1.0.5",
+    "mochawesome": "^7.1.3"
+  }
+}

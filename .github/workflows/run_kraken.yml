@@ -1,0 +1,153 @@
+name: Run Kraken Test Ghost V5.114.1
+
+on:
+  workflow_dispatch:
+    inputs:
+      ghost_version:
+        description: 'Ghost version'
+        required: true
+        default: '5.114.1'
+
+jobs:
+  run-kraken:
+    runs-on: ubuntu-latest
+
+    env:
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
+      PUPPETEER_LAUNCH_ARGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --remote-debugging-port=9222"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x' # Asegúrate que sea >=20.0.0 según tu package.json
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            google-chrome-stable \
+            xvfb \
+            curl \
+            wget \
+            gnupg \
+            unzip \
+            sudo \
+            libnss3 \
+            libatk-bridge2.0-0 \
+            libxss1 \
+            libgbm1 \
+            android-tools-adb \
+            libasound2t64 
+          echo "Chrome version: $(google-chrome-stable --version)"
+
+      - name: Install Ghost CLI
+        run: sudo npm install -g ghost-cli && ghost --version
+
+      - name: Create Ghost working dir for GHA
+        run: mkdir -p ${{ github.workspace }}/ghost-instance-gha
+
+      - name: Set up Ghost instance
+        working-directory: ${{ github.workspace }}/ghost-instance-gha
+        run: |
+          echo "Instalando Ghost versión: ${{ github.event.inputs.ghost_version }}"
+          ghost install ${{ github.event.inputs.ghost_version }} \
+            --no-prompt \
+            --no-start \
+            --local \
+            --db sqlite3 \
+            --no-setup-linux-user \
+            --process local
+          echo "Iniciando Ghost..."
+          ghost start --no-enable-stackdriver
+
+      - name: Wait for Ghost to be ready
+        working-directory: ${{ github.workspace }}/ghost-instance-gha
+        run: |
+          echo "Esperando que Ghost esté listo..."
+          for i in {1..30}; do # ~2.5 minutos de espera máxima
+            if curl -s --fail http://localhost:2368/ghost/ > /dev/null; then
+              echo "Ghost está listo!"
+              exit 0
+            fi
+            echo "Intento $i: Ghost no está listo aún..."
+            sleep 5
+          done
+          echo "Error: Ghost no inició a tiempo."
+          echo "Mostrando logs de Ghost:"
+          ghost log -e production
+          exit 1
+      
+      # Instalar dependencias de Kraken DENTRO del subdirectorio e2e/misw-4103-kraken
+      - name: Install Kraken dependencies
+        run: |
+          echo "Instalando dependencias para Kraken en ./e2e/misw-4103-kraken"
+          npm ci --prefix ./e2e/misw-4103-kraken
+        # ¡MUY IMPORTANTE! Asegúrate de que el archivo 'e2e/misw-4103-kraken/package-lock.json'
+        # esté actualizado, sea correcto y esté comiteado en tu repositorio.
+
+      # Paso de depuración para el subdirectorio de Kraken
+      - name: Debug Kraken node_modules contents
+        working-directory: ./e2e/misw-4103-kraken # Directorio de trabajo correcto
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "---------------------------------------------------------------------"
+          echo "Listando contenido de ./node_modules/:"
+          ls -la ./node_modules/ || echo "./node_modules/ no encontrada o vacía"
+          echo "---------------------------------------------------------------------"
+          echo "Listando contenido de ./node_modules/.bin/:"
+          ls -la ./node_modules/.bin/ || echo "./node_modules/.bin/ no encontrada o vacía"
+          echo "---------------------------------------------------------------------"
+        continue-on-error: true
+
+      # Ejecutar pruebas de Kraken desde el subdirectorio e2e/misw-4103-kraken
+      - name: Run Kraken tests
+        working-directory: ./e2e/misw-4103-kraken # Directorio de trabajo correcto para Kraken
+        run: |
+          echo "Directorio de trabajo actual para pruebas de Kraken: $(pwd)"
+          echo "PUPPETEER_EXECUTABLE_PATH: $PUPPETEER_EXECUTABLE_PATH"
+          echo "PUPPETEER_LAUNCH_ARGS: $PUPPETEER_LAUNCH_ARGS"
+          
+          # La creación de carpetas de screenshots/reports es relativa al working-directory actual
+          mkdir -p ./screenshots 
+          mkdir -p ./reports
+
+          # El script 'test:all' en e2e/misw-4103-kraken/package.json es "node krakenRunner.js"
+          # npm run ejecutará el script definido en el package.json de este working-directory
+          xvfb-run -a --server-args="-screen 0 1280x1024x24" npm run test:all
+
+      - name: List files in screenshots directory (for upload verification)
+        if: always()
+        run: |
+          echo "Verificando contenido para upload-artifact en e2e/misw-4103-kraken/screenshots"
+          # La ruta debe ser desde la raíz del workspace para el upload-artifact
+          ls -R ${{ github.workspace }}/e2e/misw-4103-kraken/screenshots || echo "Carpeta screenshots no encontrada o vacía"
+
+      - name: Upload Kraken screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kraken-screenshots-local-sim
+          path: ${{ github.workspace }}/e2e/misw-4103-kraken/screenshots/
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-local-sim
+          path: ${{ github.workspace }}/e2e/misw-4103-kraken/reports/
+
+      - name: Teardown Ghost
+        if: always()
+        run: |
+          GHOST_DIR="${{ github.workspace }}/ghost-instance-gha"
+          if [ -d "$GHOST_DIR" ]; then
+            echo "Attempting to stop Ghost in $GHOST_DIR"
+            # Cambiamos al directorio antes de ejecutar ghost stop
+            (cd "$GHOST_DIR" && ghost stop) || echo "Ghost stop failed or Ghost was not running/dir was not a Ghost instance."
+          else
+            echo "Ghost instance directory $GHOST_DIR not found, skipping teardown."
+          fi

@@ -1,0 +1,50 @@
+{
+  "name": "proyecto-base",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "",
+  "description": "Proyecto base para el curso Pruebas Automatizadas de Software",
+  "keywords": [
+    "jest",
+    "puppeteer",
+    "misw"
+  ],
+  "homepage": "https://github.com/Uniandes-MISW4103/proyecto-base#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Uniandes-MISW4103/proyecto-base.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Uniandes-MISW4103/proyecto-base/issues"
+  },
+  "workspaces": [
+    "e2e/*",
+    "reconocimiento/*",
+    "vrt/*"
+  ],
+  "scripts": {
+    "monkey:install": "npm install -w misw-4103-monkey",
+    "mocnkey:prepare": "npm run prepare -w misw-4103-ripper",
+    "monkey:test": "npm run test -w misw-4103-monkey",
+    "monkey:ui": "npm run test:ui -w misw-4103-monkey",
+    "ripper:install": "npm install -w misw-4103-ripper",
+    "ripper:test": "npm run test -w misw-4103-ripper",
+    "ripper:ui": "npm run test:ui -w misw-4103-ripper",
+    "kraken:install": "npm install -w misw-4103-kraken",
+    "kraken:prepare": "npm run prepare -w misw-4103-kraken",
+    "kraken:test": "npm run test -w misw-4103-kraken",
+    "kraken:ui": "npm run test:ui -w misw-4103-kraken",
+    "cypress:install": "npm install -w misw-4103-cypress",
+    "cypress:prepare": "npm run prepare -w misw-4103-cypress",
+    "cypress:test": "npm run test -w misw-4103-cypress",
+    "cypress:ui": "npm run test:ui -w misw-4103-cypress",
+    "resemblejs:install": "npm install -w misw-4103-resemblejs",
+    "resemblejs:prepare": "npm run prepare -w misw-4103-resemblejs",
+    "resemblejs:test": "npm run test -w misw-4103-resemblejs",
+    "resemblejs:ui": "npm run test:ui -w misw-4103-resemblejs",
+    "pixelmatch:install": "npm install -w misw-4103-pixelmatch",
+    "pixelmatch:prepare": "npm run prepare -w misw-4103-pixelmatch",
+    "pixelmatch:test": "npm run test -w misw-4103-pixelmatch",
+    "pixelmatch:ui": "npm run test:ui -w misw-4103-pixelmatch"
+  }
+}

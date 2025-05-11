@@ -1,0 +1,6 @@
+# Cypress screen captures
+cypress/videos/
+cypress/screenshots/
+
+*.png
+*.html

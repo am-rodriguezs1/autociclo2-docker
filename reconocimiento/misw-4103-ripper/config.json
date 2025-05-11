@@ -1,0 +1,11 @@
+{
+  "url": "http://localhost:2368/ghost/#/",
+  "headless": true,
+  "depthLevels": 3,
+  "inputValues": false,
+  "values": {
+    "identification": "user@user.com",
+    "password": "password"
+  },
+  "browsers": ["chromium"] 
+}

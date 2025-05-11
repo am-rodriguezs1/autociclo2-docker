@@ -1,0 +1,21 @@
+{
+    "options": {
+        "output": {
+            "errorColor": {
+                "red": 255,
+                "green": 0,
+                "blue": 0
+            },
+            "errorType": "flat",
+            "boundingBoxes": true,
+            "largeImageThreshold": 1200,
+            "outputDiff": true,
+            "outputDiffMask": true
+        },
+        "scaleToSameSize": true,
+        "ignore": "less"
+    },
+    "baseScreenshotsPath": "../../e2e/misw-4103-cypress/cypress/screenshots/v4.5",
+    "rcScreenshotsPath": "../../e2e/misw-4103-cypress/cypress/screenshots/v5.114.1",
+    "output": "./results"
+}

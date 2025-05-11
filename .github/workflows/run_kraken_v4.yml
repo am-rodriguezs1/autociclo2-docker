@@ -1,0 +1,165 @@
+name: Run Kraken Test - Ghost 4.5.0 
+on:
+  workflow_dispatch:
+    inputs:
+      ghost_version_v4:
+        description: 'Ghost version (v4.x.x)'
+        required: true
+        default: '4.5.0'
+
+jobs:
+  run-kraken-ghost-v4:
+    runs-on: ubuntu-22.04
+
+    env:
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome-stable
+      PUPPETEER_LAUNCH_ARGS: "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --remote-debugging-port=9222"
+      NODE_ENV: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 14.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '14.x'
+
+      - name: Install system dependencies (Cleaned)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            google-chrome-stable \
+            xvfb \
+            curl \
+            wget \
+            gnupg \
+            unzip \
+            sudo \
+            libnss3 \
+            libatk-bridge2.0-0 \
+            libxss1 \
+            libgbm1 \
+            libasound2 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxrandr2 \
+            libgtk-3-0 \
+            libdrm2 \
+            ca-certificates \
+            apt-transport-https \
+            android-tools-adb
+          echo "Chrome version: $(google-chrome-stable --version)"
+          echo "Node version: $(node -v)"
+          echo "NPM version: $(npm -v)"
+          echo "ADB version: $(adb version || echo 'adb not found after install attempt')"
+
+      - name: Install compatible Ghost CLI for Ghost 4.x
+        run: sudo npm install -g ghost-cli@1.21.0 && ghost --version
+
+      - name: Create Ghost working dir (v4)
+        run: mkdir -p ${{ github.workspace }}/ghost-instance-v4
+
+      - name: Set up Ghost 4.x instance
+        working-directory: ${{ github.workspace }}/ghost-instance-v4
+        run: |
+          echo "Instalando Ghost versión: ${{ github.event.inputs.ghost_version_v4 }}"
+          ghost install ${{ github.event.inputs.ghost_version_v4 }} \
+            --force \
+            --no-prompt \
+            --no-start \
+            --local \
+            --db sqlite3 \
+            --no-setup-linux-user \
+            --dir ${{ github.workspace }}/ghost-instance-v4 \
+            --process local
+          echo "Iniciando Ghost..."
+          ghost start --no-enable-stackdriver
+
+      - name: Wait for Ghost 4.x to be ready
+        working-directory: ${{ github.workspace }}/ghost-instance-v4
+        run: |
+          echo "Esperando que Ghost (v4) esté listo..."
+          for i in {1..30}; do # ~2.5 minutos de espera máxima
+            if curl -s --fail http://localhost:2368/ghost/ > /dev/null; then
+              echo "Ghost (v4) está listo!"
+              exit 0
+            fi
+            echo "Intento $i: Ghost (v4) no está listo aún..."
+            sleep 5
+          done
+          echo "Error: Ghost (v4) no inició a tiempo."
+          echo "Mostrando logs de Ghost (v4):"
+          ghost log -e production
+          exit 1
+      
+      - name: Install Kraken dependencies in sub-directory
+        run: |
+          echo "Instalando dependencias de Kraken en ./e2e/misw-4103-kraken con Node.js $(node -v) y npm $(npm -v)..."
+          npm install --prefix ./e2e/misw-4103-kraken
+          npm install --prefix ./e2e/misw-4103-kraken @cucumber/cucumber@7.2.1
+        
+      - name: Explicitly install/update kraken-node in sub-directory
+        working-directory: ./e2e/misw-4103-kraken # Establece el directorio de trabajo
+        run: |
+          echo "Ejecutando 'npm install kraken-node' en $(pwd)..."
+          npm install kraken-node
+        
+
+      - name: Debug Kraken node_modules contents (sub-directory)
+        if: always() 
+        working-directory: ./e2e/misw-4103-kraken # Check the sub-directory
+
+        run: |
+          echo "Current directory for debug: $(pwd)"
+          echo "---------------------------------------------------------------------"
+          echo "Listando contenido de ./node_modules/ (en e2e/misw-4103-kraken):"
+          ls -la ./node_modules/ || echo "./node_modules/ no encontrada o vacía"
+          echo "---------------------------------------------------------------------"
+          echo "Listando contenido de ./node_modules/.bin/ (en e2e/misw-4103-kraken):"
+          ls -la ./node_modules/.bin/ || echo "./node_modules/.bin/ no encontrada o vacía"
+          echo "---------------------------------------------------------------------"
+        continue-on-error: true
+
+      - name: Run Kraken tests against Ghost 4.x (using test:base)
+        working-directory: ./e2e/misw-4103-kraken # Set working directory to where test:base is defined
+        env:
+          GHOST_VERSION: ${{ github.event.inputs.ghost_version_v4 }}
+        run: |
+          echo "Directorio de trabajo actual para pruebas de Kraken: $(pwd)"
+          # mkdir para screenshots/reports ahora es relativo a este working-directory
+          mkdir -p ./screenshots 
+          mkdir -p ./reports
+          # Ejecutar el script test:base definido en e2e/misw-4103-kraken/package.json
+          xvfb-run -a --server-args="-screen 0 1280x1024x24" npm run test:base 
+
+      - name: List files in screenshots directory (for upload verification)
+        if: always()
+        run: |
+          echo "Verificando contenido para upload-artifact en e2e/misw-4103-kraken/screenshots"
+          ls -R ${{ github.workspace }}/e2e/misw-4103-kraken/screenshots || echo "Carpeta screenshots no encontrada o vacía"
+
+      - name: Upload Kraken screenshots (Ghost v4 run)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kraken-screenshots-ghost-v4
+          path: ${{ github.workspace }}/e2e/misw-4103-kraken/screenshots/
+
+      - name: Upload test report (Ghost v4 run)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-ghost-v4
+          path: ${{ github.workspace }}/e2e/misw-4103-kraken/reports/
+
+      - name: Teardown Ghost 4.x
+        if: always()
+        run: |
+          GHOST_DIR_V4="${{ github.workspace }}/ghost-instance-v4"
+          if [ -d "$GHOST_DIR_V4" ]; then
+            echo "Attempting to stop Ghost (v4) in $GHOST_DIR_V4"
+            (cd "$GHOST_DIR_V4" && ghost stop) || echo "Ghost stop (v4) failed or Ghost was not running/dir was not a Ghost instance."
+          else
+            echo "Ghost instance directory $GHOST_DIR_V4 not found, skipping teardown."
+          fi
